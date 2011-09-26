@@ -1,0 +1,205 @@
+.\" Copyright (c) 2011, Joyent, Inc. All Rights Reserved.
+.\" Copyright (c) 2011, Robert Mustacchi. All Rights Reserved.
+.\" The contents of this file are subject to the terms of the Common Development and Distribution License (the "License"). You may not use this file except in compliance with the License. You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE or http://www.opensolaris.org/os/licensing.
+.\" See the License for the specific language governing permissions and limitations under the License. When distributing Covered Code, include this CDDL HEADER in each file and include the License file at usr/src/OPENSOLARIS.LICENSE. If applicable, add the following below this CDDL HEADER, with the
+.\" fields enclosed by brackets "[]" replaced with your own identifying information: Portions Copyright [yyyy] [name of copyright owner]
+
+.TH ctf2json 1 "15 Sep 2011" "SunOS 5.11" "User Commands"
+
+.SH NAME
+ctf2json \- dump CTF type data to JSON
+
+.SH SYNOPSIS
+\fBctf2json\fR \fB-f\fR \fBfile\fR  \fB-t\fR \fBtype\fR
+[ \fB-t\fR \fBtype\fR ... ] 
+
+.SH DESCRIPTION
+
+\fBctf2json\fR provides a way to export CTF data embedded in binaries and
+libraries for types as a JSON object. The utility uses CTF data from the
+specified file and determines the set of type definitions necessary to define
+each specified type.  Because types often need to be defined in a specific
+order, \fBctf2json\fR uses the type ordering information in CTF to emit data in
+the proper order.
+
+\fBctf2json\fR writes a JSON payload to standard out. It has the following main
+sections:
+
+.RS +4
+.TP
+.ie t \(bu
+.el o
+data - An array of objects describing type information and typedefs.
+.RE
+.RS +4
+.TP
+.ie t \(bu
+.el o
+metadata - An object that contains various pieces of information about the
+generated data.
+.RE
+
+The following is a sample data section:
+
+        [
+          { "name": "long", "integer": { "length": 4, "signed": true } },
+          { "name": "time_t", "typedef": "long" },
+          { "name": "struct timespec", "struct": [
+                  { "name": "tv_sec", "type": "time_t" },
+                  { "name": "tv_nsec", "type": "long" }
+          ] },
+          { "name": "timespec_t", "typedef": "struct timespec" }
+        ]
+
+For a full explanation of the JSON format see the section JSON FORMAT below.
+
+
+The data model used is based upon the file passed in because the CTF data is
+specific to the data model. If the file is a 32-bit executable or shared object,
+then a 32-bit data model is assumed. If a 64-bit file is passed in then a 64-bit
+data model will be used instead.
+
+.SH OPTIONS
+
+\fBctf2json\fR requires the following arguments:
+
+.sp
+.ne 2
+.mk
+.na
+\fB\fB-f\fR\fR
+.ad
+.sp .6
+.RS 4n
+Use this file as the source for all CTF type data. This option can only be
+specified once.
+.RE
+
+.sp
+.ne 2
+.mk
+.na
+\fB\fB-t\fR\fR
+.ad
+.sp .6
+.RS 4n
+Specify a type that should be emitted as JSON data. This option can be specified
+multiple times. As a part of specifying -t all the types that are required to
+describe the specified type will be emitted.
+.RE
+
+.SH JSON FORMAT
+
+The current JSON object (version 1) contains a metadata section and a data
+section. The metadata section currently defines five different attributes. The
+first is \fBctf2json_version\fR - The version of the JSON file format used by
+\fBctf2json\fR. The current version is 1.0. \fBcreated_at\fR is the timestamp of
+when the file is being produced. This value is in seconds since 1970.
+\fBderived_from\fR is the name of the file that provided the CTF data.
+\fBctf_version\fR is the version of the CTF data that we received data from.
+\fBrequested_types\fR is an array. Each entry corresponds to a type requested
+via the \fB-t\fR option.
+
+The data section consists of an array of objects. Every object has a name
+section that describes the either name of a type or names a field inside a
+struct. Each object also contains a second key. The second key varies based upon
+what that type is.
+
+.sp
+.ne 2
+.mk
+.na
+\fB\fBinteger\fR\fR
+.ad
+.sp .6
+.RS 4n
+An integer is an object with two fields that describe how to represent a value.
+\fBlength\fR is the number of bytes needed to represent the value. \fBsigned\fR
+is a boolean that says whether the value is a signed integer or not. Example:
+
+{ "name": "unsigned", "integer": { "length": 4, "signed": false } }
+.RE
+
+.sp
+.ne 2
+.mk
+.na
+\fB\fBfloat\fR\fR
+.ad
+.sp .6
+.RS 4n
+A float represents an IEEE 724 single or double precision value. This is an
+object that has one value \fBlength\fR which is the number of bytes needed to
+represent the value. Example:
+
+{ "name": "float", "float": { "length": 4 } }
+.RE
+
+.sp
+.ne 2
+.mk
+.na
+\fB\fBtypedef\fR\fR
+.ad
+.sp .6
+.RS 4n
+This represents a type that is actually a C typedef to another type. Unlike the
+others, this is not an object and the value is a string which is the type name
+that it maps to. Example:
+
+{ "name": "psinfo_t", "typedef": "struct psinfo" }
+.RE
+
+.sp
+.ne 2
+.mk
+.na
+\fB\fBstruct\fR\fR
+.ad
+.sp .6
+.RS 4n
+A C struct is represented by an array of objects. The array is ordered based on
+the order of the members in the struct. Each entry in the array has two fields.
+\fBname\fR is the name of the structure member. \fBtype\fR is the name of the
+type of that member. The type is guaranteed to have been enumerated already.
+Example:
+
+{ "name": "struct timespec", "struct": [ { "name": "tv_sec", "type":
+"time_t" }, { "name": "tv_nsec", "type": "long" } ] },
+
+Note, the type names are being provided by libctf. When dealing with an array it
+is always formatted with a space between the type name and the number of
+elements. e.g. "int [4]"
+.RE
+
+.SH EXIT STATUS
+.sp
+.ne 2
+.mk
+.na
+\fb0\fr
+.ad
+.RS 5n
+.rt
+Successful completion.
+.RE
+
+.sp
+.ne 2
+.mk
+.na
+\fB\fB1\fR\fR
+.ad
+.RS 5n
+.rt  
+An error occurred or invalid command line option was specified.
+.RE
+
+.SH SEE ALSO
+libctf, ctfdump, node-ctype
+
+.SH BUGS
+
+Currently there are a few valid types in CTF which are not properly being
+supported. These include unions and pointers. This will be added in a future
+version with a rev to the JSON format minor version.
