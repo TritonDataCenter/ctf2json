@@ -62,6 +62,11 @@ typedef struct visit {
 	ctf_id_t	v_tdn;			/* id of what we point to */
 } visit_t;
 
+typedef struct pem_cb {
+	FILE	*pem_out;
+	int	pem_first;
+} pem_cb_t;
+
 typedef struct psm_cb {
 	ctf_file_t	*psm_fp;
 	FILE		*psm_out;
@@ -225,6 +230,38 @@ walk_type(ctf_file_t *fp, ctf_id_t oid)
 	avl_add(&g_visited, found);
 }
 
+static int
+print_enum_member(const char *name, int val, void *arg)
+{
+	pem_cb_t *cb = arg;
+
+	if (cb->pem_first != 1) {
+		(void) fprintf(cb->pem_out, ",\n");
+	}
+	cb->pem_first = 0;
+
+	(void) fprintf(cb->pem_out, "\t\t\t{ \"name\": \"%s\", \"value\": "
+	    "%d }",
+	    name, val);
+	return (0);
+}
+
+static void
+print_enum(FILE *out, ctf_file_t *fp, ctf_id_t id)
+{
+	char name[CTF_TYPE_NAMELEN];
+	pem_cb_t cb;
+
+	if (ctf_type_name(fp, id, name, sizeof (name)) == NULL)
+		die("failed to get name of type %ld\n", id);
+
+	cb.pem_first = 1;
+	cb.pem_out = out;
+	(void) fprintf(out, "\t\t{ \"name\": \"%s\", \"enum\": [\n", name);
+	(void) ctf_enum_iter(fp, id, print_enum_member, &cb);
+	(void) fprintf(out, "\n\t\t] }");
+}
+
 static void
 print_int(FILE *out, ctf_file_t *fp, ctf_id_t id)
 {
@@ -336,6 +373,9 @@ print_tree(ctf_file_t *fp, avl_tree_t *avl)
 				continue;
 			case CTF_K_STRUCT:
 				print_struct(out, fp, cur->v_id);
+				break;
+			case CTF_K_ENUM:
+				print_enum(out, fp, cur->v_id);
 				break;
 			default:
 				die("Unimplemented kind. kind/id:  %d %ld\n",
