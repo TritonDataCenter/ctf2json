@@ -348,19 +348,22 @@ static void
 print_tree(ctf_file_t *fp, avl_tree_t *avl)
 {
 	FILE *out = stdout;
-	visit_t *cur, *last;
+	visit_t *cur, *first;
 	int kind;
 
-	cur = avl_first(avl);
-	last = avl_last(avl);
+	cur = first = avl_first(avl);
 	(void) fprintf(out, "\t[\n");
 	for (; cur != NULL; cur = AVL_NEXT(avl, cur)) {
 		if (cur->v_tdn != -1) {
+			if (cur != first)
+				(void) fprintf(out, ",\n");
 			print_typedef(out, fp, cur->v_id, cur->v_tdn);
 		} else {
 
 			kind = ctf_type_kind(fp, cur->v_id);
 			assert(kind != CTF_ERR);
+			if (cur != first && kind != CTF_K_ARRAY)
+				(void) fprintf(out, ",\n");
 
 			switch (kind) {
 			case CTF_K_INTEGER:
@@ -384,8 +387,6 @@ print_tree(ctf_file_t *fp, avl_tree_t *avl)
 			}
 		}
 
-		if (cur != last)
-			(void) fprintf(out, ",\n");
 	}
 	(void) fprintf(out, "\n\t]");
 }
